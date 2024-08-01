@@ -2,4 +2,9 @@
 |----------------|-------------------------------|
 
 # IntuneBulkMaster 
-Simplify and streamline bulk actions in Microsoft Intune.
+The `IntuneBulkMaster` provides a set of functions for managing and interacting with Microsoft Intune. It is designed to perform bulk operations on Intune-managed devices, such as rebooting, collecting diagnostics, and rotating keys. This module facilitates efficient management of devices by allowing administrators to perform tasks across multiple devices or groups with ease.
+
+## PowerShell Module
+You can find the PowerSHell Module including a readme in the SUbdirectory [Module\IntuneBulkMaster](https://github.com/FlorianSLZ/IntuneBulkMaster/tree/main/Module/IntuneBulkMaster)
+## UI
+The UI will be developed once the PowerSHell module is well tested and considered stable. 
