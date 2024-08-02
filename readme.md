@@ -1,14 +1,17 @@
 <p align="center">
     <a href="https://scloud.work" alt="Florian Salzmann | scloud"></a>
-            <img src="https://scloud.work/wp-content/uploads/IntuneBulkMaster.png" width="75" height="75" /></a>
+            <img src="https://scloud.work/wp-content/uploads/IntuneBulkMaster-Icon.png" width="75" height="75" /></a>
 </p>
 <p align="center">
     <a href="https://www.powershellgallery.com/packages/IntuneBulkMaster/" alt="PowerShell Gallery Version">
-        <img src="https://img.shields.io/powershellgallery/v/IntuneBulkMaster.svg" /></a>
+        <img src="https://img.shields.io/powershellgallery/v/IntuneBulkMaster.svg" />
+    </a>
     <a href="https://www.powershellgallery.com/packages/IntuneBulkMaster/" alt="PS Gallery Downloads">
-        <img src="https://img.shields.io/powershellgallery/dt/IntuneBulkMaster.svg" /></a>
-    <a href="https://www.powershellgallery.com/packages/IntuneBulkMaster/" alt="PS Platform">
-        <img src="https://img.shields.io/powershellgallery/p/IntuneBulkMaster.svg" /></a>
+        <img src="https://img.shields.io/powershellgallery/dt/IntuneBulkMaster.svg" />
+    </a>
+    <a href="https://www.linkedin.com/in/fsalzmann/">
+        <img alt="Made by" src="https://img.shields.io/static/v1?label=made%20by&message=Florian%20Salzmann&color=04D361&labelColor=000000">
+    </a>
 </p>
 <p align="center">
     <a href="https://github.com/FlorianSLZ/IntuneBulkMaster/graphs/commit-activity" alt="GitHub Last Commit">
