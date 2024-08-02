@@ -10,7 +10,7 @@
         <img src="https://img.shields.io/powershellgallery/dt/IntuneBulkMaster.svg" />
     </a>
     <a href="https://www.linkedin.com/in/fsalzmann/">
-        <img alt="Made by" src="https://img.shields.io/static/v1?label=made%20by&message=Florian%20Salzmann&color=04D361&labelColor=000000">
+        <img alt="Made by" src="https://img.shields.io/static/v1?label=made%20by&message=Florian%20Salzmann&color=04D361">
     </a>
 </p>
 <p align="center">
