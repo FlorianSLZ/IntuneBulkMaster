@@ -11,8 +11,13 @@ function Invoke-IBMrotateBitLockerKeys {
 
     .NOTES
         Author: Florian Salzmann | @FlorianSLZ | https://scloud.work
-        Version: 1.0
-        Date: 2024-08-01
+        Version: 1.1
+        Date: 2024-08-03
+
+        Changelog:
+        - 2024-08-01: 1.0 Initial version
+        - 2024-08-01: 1.1 Filtering for only Windows Devices
+        
     #>
     
     param (
@@ -40,33 +45,37 @@ function Invoke-IBMrotateBitLockerKeys {
 
     # Get device IDs based on provided criteria
     if($AllDevices){
-        $deviceIds = Get-IntuneDeviceIDs -OS "Windows" # cause its only supported for them ;) 
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -OS "Windows" -AllDeviceInfo # cause its only supported for them ;) 
     }elseif($SelectDevices){
-        $deviceIds = Get-IntuneDeviceIDs -SelectDevices
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectDevices -AllDeviceInfo
     }elseif($SelectGroup){
-        $deviceIds = Get-IntuneDeviceIDs -SelectGroup
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectGroup -AllDeviceInfo
     }else{
-        $deviceIds = Get-IntuneDeviceIDs -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $OS 
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $OS -AllDeviceInfo
     }
 
-    if (-not $deviceIds) {
+    if (-not $CollectionDevicesInfo) {
         Write-Warning "No devices found based on the provided criteria."
         return
     }
 
     # rotate BitLocker Key for each device
     $counter = 0
-    foreach ($deviceId in $deviceIds) {
+    foreach ($DeviceInfo in $CollectionDevicesInfo) {
         $counter++
-        Write-Progress -Id 0 -Activity "Rotate BitLocker Key" -Status "Processing $($counter) of $($deviceIds.count)" -CurrentOperation $computer -PercentComplete (($counter/$deviceIds.Count) * 100)
+        Write-Progress -Id 0 -Activity "Rotate BitLocker Key" -Status "Processing $($counter) of $($CollectionDevicesInfo.count)" -CurrentOperation $computer -PercentComplete (($counter/$CollectionDevicesInfo.Count) * 100)
 
-        $uri = "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices/$deviceId/rotateBitLockerKeys"
+        if($DeviceInfo.os -ne "Windows"){
+            Write-Warning "BitLocker Key rotation is only supported for Windows devices. Skipping device ID: $($DeviceInfo.id)"
+            continue
+        }
+        $uri = "https://graph.microsoft.com/beta/deviceManagement/managedDevices/$($DeviceInfo.id)/rotateBitLockerKeys"
         
         try {
             $response = Invoke-MgGraphRequest -Method POST -Uri $uri
-            Write-Verbose "BitLocker Key rotation triggered for device ID: $deviceId. $Response"
+            Write-Verbose "BitLocker Key rotation triggered for device ID: $($DeviceInfo.id). $Response"
         } catch {
-            Write-Output "An error occurred while rotating BitLocker Key for device ID: $deviceId. Error: $_"
+            Write-Error "An error occurred while rotating BitLocker Key for device ID: $($DeviceInfo.id). Error: $_"
         }
     }
 }
