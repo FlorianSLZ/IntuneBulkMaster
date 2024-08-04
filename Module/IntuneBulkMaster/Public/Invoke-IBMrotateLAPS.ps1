@@ -11,8 +11,13 @@ function Invoke-IBMrotateLAPS {
 
     .NOTES
         Author: Florian Salzmann | @FlorianSLZ | https://scloud.work
-        Version: 1.0
-        Date: 2024-08-01
+        Version: 1.1
+        Date: 2024-08-03
+
+        Changelog:
+        - 2024-08-01: 1.0 Initial version
+        - 2024-08-01: 1.1 Added filtering for only Windows Devices
+
     #>
 
     param (
@@ -40,33 +45,37 @@ function Invoke-IBMrotateLAPS {
 
     # Get device IDs based on provided criteria
     if($AllDevices){
-        $deviceIds = Get-IntuneDeviceIDs -AllDevices 
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -OS "Windows" -AllDeviceInfo # cause its only supported for them ;) 
     }elseif($SelectDevices){
-        $deviceIds = Get-IntuneDeviceIDs -SelectDevices
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectDevices -AllDeviceInfo
     }elseif($SelectGroup){
-        $deviceIds = Get-IntuneDeviceIDs -SelectGroup
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectGroup -AllDeviceInfo
     }else{
-        $deviceIds = Get-IntuneDeviceIDs -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $OS 
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $OS -AllDeviceInfo
     }
 
-    if (-not $deviceIds) {
-        Write-Output "No devices found based on the provided criteria."
+    if (-not $CollectionDevicesInfo) {
+        Write-Warning "No devices found based on the provided criteria."
         return
     }
 
-    # Rotate LAPS password for each device
+    # rotate LAPS password for each device
     $counter = 0
-    foreach ($deviceId in $deviceIds) {
+    foreach ($DeviceInfo in $CollectionDevicesInfo) {
         $counter++
-        Write-Progress -Id 0 -Activity "Rotate LAPS Password" -Status "Processing $($counter) of $($deviceIds.count)" -CurrentOperation $computer -PercentComplete (($counter/$deviceIds.Count) * 100)
+        Write-Progress -Id 0 -Activity "Rotate LAPS password" -Status "Processing $($counter) of $($CollectionDevicesInfo.count)" -CurrentOperation $computer -PercentComplete (($counter/$CollectionDevicesInfo.Count) * 100)
 
-        $uri = "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices/$deviceId/rotateLocalAdminPassword"
+        if($DeviceInfo.operatingSystem -ne "Windows"){
+            Write-Warning "LAPS password rotation is only supported for Windows devices. Skipping device ID: $($DeviceInfo.id)"
+            continue
+        }
+        $uri = "https://graph.microsoft.com/beta/deviceManagement/managedDevices/$($DeviceInfo.id)/rotateLocalAdminPassword"
         
         try {
             $response = Invoke-MgGraphRequest -Method POST -Uri $uri
             Write-Verbose "LAPS password rotation triggered for device ID: $deviceId. $Response"
         } catch {
-            Write-Output "An error occurred while syncing device ID: $deviceId. Error: $_"
+            Write-Output "An error occurred while LAPS password rotatio for device ID: $deviceId. Error: $_" -ForgroundColor Red
         }
     }
 }
