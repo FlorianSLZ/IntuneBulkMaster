@@ -11,8 +11,13 @@ function Invoke-IBMcollectDiagnostics {
 
     .NOTES
         Author: Florian Salzmann | @FlorianSLZ | https://scloud.work
-        Version: 1.0
-        Date: 2024-08-01
+        Version: 1.1
+        Date: 2024-08-03
+
+        Changelog:
+        - 2024-08-01: 1.0 Initial version
+        - 2024-08-03: 1.1 Added filtering for only supported OS types
+        
     #>
     
     param (
@@ -38,36 +43,42 @@ function Invoke-IBMcollectDiagnostics {
         [switch]$SelectGroup
     )
 
+    # Definition of supported OS for this remote action
+    $SupportetOS = @("Windows")
+
     # Get device IDs based on provided criteria
     if($AllDevices){
-        $deviceIds = Get-IntuneDeviceIDs -AllDevices 
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -AllDeviceInfo   
     }elseif($SelectDevices){
-        $deviceIds = Get-IntuneDeviceIDs -SelectDevices
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectDevices -AllDeviceInfo
     }elseif($SelectGroup){
-        $deviceIds = Get-IntuneDeviceIDs -SelectGroup
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectGroup -AllDeviceInfo
     }else{
-        $deviceIds = Get-IntuneDeviceIDs -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $OS 
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $OS -AllDeviceInfo
     }
 
-    if (-not $deviceIds) {
+    if (-not $CollectionDevicesInfo) {
         Write-Warning "No devices found based on the provided criteria."
         return
     }
 
     # create Device Log Collection Request for each device
     $counter = 0
-    foreach ($deviceId in $deviceIds) {
+    foreach ($DeviceInfo in $CollectionDevicesInfo) {
         $counter++
-        Write-Progress -Id 0 -Activity "create Device Log Collection Request" -Status "Processing $($counter) of $($deviceIds.count)" -CurrentOperation $computer -PercentComplete (($counter/$deviceIds.Count) * 100)
+        Write-Progress -Id 0 -Activity "create Device Log Collection Request" -Status "Processing $($counter) of $($CollectionDevicesInfo.count)" -CurrentOperation $computer -PercentComplete (($counter/$CollectionDevicesInfo.Count) * 100)
 
-        $uri = "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices/$deviceId/createDeviceLogCollectionRequest"
+        if($DeviceInfo.operatingSystem -notin $SupportetOS){
+            Write-Warning "create Device Log Collection Request is only supported for ""$SupportetOS"" devices. Skipping device ID: $($DeviceInfo.id)"
+            continue
+        }
+        $uri = "https://graph.microsoft.com/beta/deviceManagement/managedDevices/$($DeviceInfo.id)/createDeviceLogCollectionRequest"
         
         try {
             $response = Invoke-MgGraphRequest -Method POST -Uri $uri
-            Write-Verbose "create Device Log Collection Request for device ID: $deviceId. $Response"
+            Write-Verbose "create Device Log Collection Request triggered for device ID: $($DeviceInfo.id). $Response"
         } catch {
-            Write-Output "An error occurred while create Device Log Collection Request for device ID: $deviceId. Error: $_"
+            Write-Error "An error occurred while create Device Log Collection Request for device ID: $($DeviceInfo.id). Error: $_"
         }
     }
 }
-
