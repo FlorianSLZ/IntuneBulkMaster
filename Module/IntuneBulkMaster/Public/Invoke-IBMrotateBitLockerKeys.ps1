@@ -16,7 +16,7 @@ function Invoke-IBMrotateBitLockerKeys {
 
         Changelog:
         - 2024-08-01: 1.0 Initial version
-        - 2024-08-01: 1.1 Added filtering for only Windows Devices
+        - 2024-08-03: 1.1 Added filtering for only Windows Devices
         
     #>
     
@@ -43,6 +43,9 @@ function Invoke-IBMrotateBitLockerKeys {
         [switch]$SelectGroup
     )
 
+    # Definition of supported OS for this remote action
+    $SupportetOS = @("Windows")
+
     # Get device IDs based on provided criteria
     if($AllDevices){
         $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -OS "Windows" -AllDeviceInfo # cause its only supported for them ;) 
@@ -65,8 +68,8 @@ function Invoke-IBMrotateBitLockerKeys {
         $counter++
         Write-Progress -Id 0 -Activity "Rotate BitLocker Key" -Status "Processing $($counter) of $($CollectionDevicesInfo.count)" -CurrentOperation $computer -PercentComplete (($counter/$CollectionDevicesInfo.Count) * 100)
 
-        if($DeviceInfo.operatingSystem -ne "Windows"){
-            Write-Warning "BitLocker Key rotation is only supported for Windows devices. Skipping device ID: $($DeviceInfo.id)"
+        if($DeviceInfo.operatingSystem -notin $SupportetOS){
+            Write-Warning "BitLocker Key rotation is only supported for ""$SupportetOS"" devices. Skipping device ID: $($DeviceInfo.id)"
             continue
         }
         $uri = "https://graph.microsoft.com/beta/deviceManagement/managedDevices/$($DeviceInfo.id)/rotateBitLockerKeys"

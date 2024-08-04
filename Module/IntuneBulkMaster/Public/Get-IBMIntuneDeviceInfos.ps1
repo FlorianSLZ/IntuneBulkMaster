@@ -91,15 +91,20 @@ function Get-IBMIntuneDeviceInfos {
             $EntraDeviceIds = Get-GroupMemberTypeDevice -groupId $groupId
 
             # Map Entra device IDs to Intune managed device IDs
-            $IntuneDeviceIds = @()
+            $IntuneDevices = @()
             foreach ($EntraDeviceId in $EntraDeviceIds) {
                 $managedDevice = Invoke-IBMPagingRequest -Uri "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices?`$filter=azureADDeviceId eq '$EntraDeviceId'" 
                 if ($managedDevice) {
-                    $IntuneDeviceIds += $managedDevice[0].id
+                    $IntuneDevices += $managedDevice[0]
                 }
             }
-            return $IntuneDeviceIds
+            if($AllDeviceInfo){
+                return $IntuneDevices
+            }else{
+               return $IntuneDevices.id 
+            }
             break
+
         } else {
             Write-Output "Group not found."
             break
@@ -122,25 +127,10 @@ function Get-IBMIntuneDeviceInfos {
         break
     }
 
-    $devices = Invoke-IBMPagingRequest -Uri $uri
+    $DeviceInfos = Invoke-IBMPagingRequest -Uri $uri
 
     if($SelectDevices){
-
-        $DeviceArray = @()
-        foreach ($value in $devices) {
-            $objectdetails = [pscustomobject]@{
-                DeviceID = $value.id
-                DeviceName = $value.deviceName
-                Model = $value.model
-                PrimaryUser = $value.userPrincipalName
-            }
-            $DeviceArray += $objectdetails
-        }
-
-        $DeviceInfos = ($DeviceArray | Select-Object DeviceID, DeviceName, Model, PrimaryUser | Out-GridView -PassThru -Title "Select Devices")
-        
-    }else{
-        $DeviceInfos = $devices
+        $DeviceInfos = ($DeviceInfos | Out-GridView -PassThru -Title "Select Devices")
     }
 
     if($AllDeviceInfo){

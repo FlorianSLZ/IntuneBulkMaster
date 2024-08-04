@@ -15,8 +15,13 @@ function Invoke-IBMRemediations {
 
     .NOTES
         Author: Florian Salzmann | @FlorianSLZ | https://scloud.work
-        Version: 1.0
-        Date: 2024-08-01
+        Version: 1.1
+        Date: 2024-08-03
+
+        Changelog:
+        - 2024-08-01: 1.0 Initial version
+        - 2024-08-03: 1.1 Added filtering for only supported OS types
+        
     #>
     
     
@@ -43,23 +48,26 @@ function Invoke-IBMRemediations {
         [switch]$SelectGroup
     )
 
+    # Definition of supported OS for this remote action
+    $SupportetOS = @("Windows")
+
     # Get All Remediations
     $RemediationAll = Invoke-IBMPagingRequest -URI "https://graph.microsoft.com/beta/deviceManagement/deviceHealthScripts"
     $RemediationSelected = $RemediationAll | Select-Object displayName, id | Out-GridView -PassThru -Title "Select Remediation"
     
     # Get device IDs based on provided criteria
     if($AllDevices){
-        $deviceIds = Get-IntuneDeviceIDs -AllDevices 
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -AllDeviceInfo   
     }elseif($SelectDevices){
-        $deviceIds = Get-IntuneDeviceIDs -SelectDevices
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectDevices -AllDeviceInfo
     }elseif($SelectGroup){
-        $deviceIds = Get-IntuneDeviceIDs -SelectGroup
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectGroup -AllDeviceInfo
     }else{
-        $deviceIds = Get-IntuneDeviceIDs -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $OS 
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $OS -AllDeviceInfo
     }
 
-    if (-not $deviceIds) {
-        Write-Output "No devices found based on the provided criteria."
+    if (-not $CollectionDevicesInfo) {
+        Write-Warning "No devices found based on the provided criteria."
         return
     }
 
@@ -70,19 +78,25 @@ function Invoke-IBMRemediations {
 	"ScriptPolicyId": "$($RemediationSelected.id)",
 }
 "@
-    $counter = 0
-    foreach ($deviceId in $deviceIds) {
-        $counter++
-        Write-Progress -Id 0 -Activity "Trigger Remediation" -Status "Processing $($counter) of $($deviceIds.count)" -CurrentOperation $deviceId -PercentComplete (($counter/$deviceIds.Count) * 100)
 
-        $uri = "https://graph.microsoft.com/beta/deviceManagement/managedDevices('$deviceId')/initiateOnDemandProactiveRemediation"
+    $counter = 0
+    foreach ($DeviceInfo in $CollectionDevicesInfo) {
+        $counter++
+        Write-Progress -Id 0 -Activity "Trigger Remediation" -Status "Processing $($counter) of $($CollectionDevicesInfo.count)" -CurrentOperation $computer -PercentComplete (($counter/$CollectionDevicesInfo.Count) * 100)
+
+        if($DeviceInfo.operatingSystem -notin $SupportetOS){
+            Write-Warning "Trigger Remediation is only supported for ""$SupportetOS"" devices. Skipping device ID: $($DeviceInfo.id)"
+            continue
+        }
+        $uri = "https://graph.microsoft.com/beta/deviceManagement/managedDevices//$($DeviceInfo.id)/initiateOnDemandProactiveRemediation"
         
         try {
             $response = Invoke-MgGraphRequest -Method POST -Uri $uri -Body $RemediationBody -ContentType "application/json"
-            Write-Verbose "Remediation triggered for device ID: $deviceId. $Response"
+            Write-Verbose "Trigger Remediation for device ID: $($DeviceInfo.id). $Response"
         } catch {
-            Write-Output "An error occurred while triggering the remediation on device ID: $deviceId. `nError: $_"
+            Write-Error "An error occurred while Trigger Remediation for device ID: $($DeviceInfo.id). Error: $_"
         }
     }
+
 }
 

@@ -65,7 +65,7 @@ IntuneBulkMaster module requires the following modules, which will be automatica
 Here are all functions and some examples to start with:
 
 - Connect-IntuneBulkMaster
-- Get-IntuneDeviceIDs
+- Get-IBMIntuneDeviceInfos
 - Invoke-IBMcollectDiagnostics
 - Invoke-IBMPagingRequest
 - Invoke-IBMpauseConfigurationRefresh
@@ -77,6 +77,11 @@ Here are all functions and some examples to start with:
 - Invoke-IBMrotateLAPS
 - Invoke-IBMshutDown
 - Invoke-IBMSync
+- Remove-IBMAutopilotDevice
+- Remove-IBMprimaryUser
+- Set-IBMCorporateOwned
+- Set-IBMIntuneDeviceName
+- Set-IBMPersonalOwned
 
 
 ## Connect-IntuneBulkMaster (Authentification)
@@ -92,7 +97,7 @@ Connect-IntuneBulkMaster
 - DeviceManagementManagedDevices.PrivilegedOperations.All
 
 
-## `Get-IntuneDeviceIDs`
+## `Get-IBMIntuneDeviceInfos`
 Retrieves device IDs from Intune based on specified criteria. 
 
 You can call this function amanully or with the same parameters for each bulk action. 
@@ -108,7 +113,7 @@ You can call this function amanully or with the same parameters for each bulk ac
 
 ### Example
 ```PowerShell
-Get-IntuneDeviceIDs -GroupName "INTUNE-Devices-Windows-IT"
+Get-IBMIntuneDeviceInfos -GroupName "INTUNE-Devices-Windows-IT"
 ```
 
 ## `Invoke-IBMReboot` and most of the other `Invoke-IBM*`-Functions
@@ -116,11 +121,11 @@ Triggers a reboot for Intune-managed devices based on specified criteria.
 
 
 ### Parameters
-- Same as `Get-IntuneDeviceIDs`
+- Same as `Get-IBMIntuneDeviceInfos`
 
 ### Example
 ```PowerShell
-Get-IntuneDeviceIDs -GroupName "INTUNE-Devices-Windows-IT"
+Get-IBMIntuneDeviceInfos -GroupName "INTUNE-Devices-Windows-IT"
 ```
 
 ## `Invoke-IBMRemediations`

@@ -13,6 +13,11 @@ function Invoke-IBMSync {
         Author: Florian Salzmann | @FlorianSLZ | https://scloud.work
         Version: 1.0
         Date: 2024-08-01
+
+
+        Changelog:
+        - 2024-08-01: 1.0 Initial version
+        
     #>
 
     param (
@@ -40,13 +45,13 @@ function Invoke-IBMSync {
 
     # Get device IDs based on provided criteria
     if($AllDevices){
-        $deviceIds = Get-IntuneDeviceIDs -AllDevices 
+        $deviceIds = Get-IBMIntuneDeviceInfos -AllDevices 
     }elseif($SelectDevices){
-        $deviceIds = Get-IntuneDeviceIDs -SelectDevices
+        $deviceIds = Get-IBMIntuneDeviceInfos -SelectDevices
     }elseif($SelectGroup){
-        $deviceIds = Get-IntuneDeviceIDs -SelectGroup
+        $deviceIds = Get-IBMIntuneDeviceInfos -SelectGroup
     }else{
-        $deviceIds = Get-IntuneDeviceIDs -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $OS 
+        $deviceIds = Get-IBMIntuneDeviceInfos -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $OS 
     }
 
     if (-not $deviceIds) {

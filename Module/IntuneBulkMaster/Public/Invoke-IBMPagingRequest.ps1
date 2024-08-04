@@ -12,6 +12,10 @@ function Invoke-IBMPagingRequest {
         Author: Florian Salzmann | @FlorianSLZ | https://scloud.work
         Version: 1.0
         Date: 2024-08-01
+
+        Changelog:
+        - 2024-08-01: 1.0 Initial version
+        
     #>
 
 
