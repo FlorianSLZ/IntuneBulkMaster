@@ -65,7 +65,7 @@ function Invoke-IBMrotateBitLockerKeys {
         $counter++
         Write-Progress -Id 0 -Activity "Rotate BitLocker Key" -Status "Processing $($counter) of $($CollectionDevicesInfo.count)" -CurrentOperation $computer -PercentComplete (($counter/$CollectionDevicesInfo.Count) * 100)
 
-        if($DeviceInfo.os -ne "Windows"){
+        if($DeviceInfo.operatingSystem -ne "Windows"){
             Write-Warning "BitLocker Key rotation is only supported for Windows devices. Skipping device ID: $($DeviceInfo.id)"
             continue
         }
