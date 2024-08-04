@@ -16,7 +16,7 @@ function Invoke-IBMrotateBitLockerKeys {
 
         Changelog:
         - 2024-08-01: 1.0 Initial version
-        - 2024-08-01: 1.1 Filtering for only Windows Devices
+        - 2024-08-01: 1.1 Added filtering for only Windows Devices
         
     #>
     
