@@ -15,12 +15,15 @@ function Invoke-IBMRemediations {
 
     .NOTES
         Author: Florian Salzmann | @FlorianSLZ | https://scloud.work
-        Version: 1.1
-        Date: 2024-08-03
+        Version: 1.2
+        Date: 2024-08-06
 
         Changelog:
         - 2024-08-01: 1.0 Initial version
         - 2024-08-03: 1.1 Added filtering for only supported OS types
+        - 2024-08-06: 1.2
+            - Added batching / batch requests for large device collections and speed improvements (seperate function: Invoke-IBMGrapAPIBatching)
+            - Aligment of all Action functions to the same structure
         
     #>
     
@@ -36,7 +39,7 @@ function Invoke-IBMRemediations {
         [string]$DeviceName,
         
         [parameter(Mandatory = $false, HelpMessage = "Specify the operating system of the devices to remediate. For example, 'Windows' or 'iOS'.")]
-        [string]$OS,
+        [string[]]$OS,
         
         [parameter(Mandatory = $false, HelpMessage = "Trigger remediation for all devices managed by Intune.")]
         [switch]$AllDevices,
@@ -51,19 +54,33 @@ function Invoke-IBMRemediations {
     # Definition of supported OS for this remote action
     $SupportetOS = @("Windows")
 
+    if($OS -and $SupportetOS -notcontains $OS){
+        Write-Warning "The specified operating system ""$OS"" is not supported for this action. Supported OS ""$SupportetOS""."
+        return
+    }elseif ($OS) {
+        $SupportetOS = @($OS)
+    }
+
     # Get All Remediations
     $RemediationAll = Invoke-IBMPagingRequest -URI "https://graph.microsoft.com/beta/deviceManagement/deviceHealthScripts"
     $RemediationSelected = $RemediationAll | Select-Object displayName, id | Out-GridView -PassThru -Title "Select Remediation"
-    
+
+    # Remediation trigger boddy
+    $RemediationBody = @"
+{
+	"ScriptPolicyId": "$($RemediationSelected.id)",
+}
+"@
+        
     # Get device IDs based on provided criteria
     if($AllDevices){
-        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -AllDeviceInfo   
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -AllDeviceInfo -OS $SupportetOS
     }elseif($SelectDevices){
-        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectDevices -AllDeviceInfo
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectDevices -AllDeviceInfo -OS $SupportetOS
     }elseif($SelectGroup){
-        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectGroup -AllDeviceInfo
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectGroup -AllDeviceInfo -OS $SupportetOS
     }else{
-        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $OS -AllDeviceInfo
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $SupportetOS -AllDeviceInfo
     }
 
     if (-not $CollectionDevicesInfo) {
@@ -71,32 +88,15 @@ function Invoke-IBMRemediations {
         return
     }
 
-    # Remediation trigger per device
-
-    $RemediationBody = @"
-{
-	"ScriptPolicyId": "$($RemediationSelected.id)",
-}
-"@
-
-    $counter = 0
-    foreach ($DeviceInfo in $CollectionDevicesInfo) {
-        $counter++
-        Write-Progress -Id 0 -Activity "Trigger Remediation" -Status "Processing $($counter) of $($CollectionDevicesInfo.count)" -CurrentOperation $computer -PercentComplete (($counter/$CollectionDevicesInfo.Count) * 100)
-
-        if($DeviceInfo.operatingSystem -notin $SupportetOS){
-            Write-Warning "Trigger Remediation is only supported for ""$SupportetOS"" devices. Skipping device ID: $($DeviceInfo.id)"
-            continue
-        }
-        $uri = "https://graph.microsoft.com/beta/deviceManagement/managedDevices//$($DeviceInfo.id)/initiateOnDemandProactiveRemediation"
-        
-        try {
-            $response = Invoke-MgGraphRequest -Method POST -Uri $uri -Body $RemediationBody -ContentType "application/json"
-            Write-Verbose "Trigger Remediation for device ID: $($DeviceInfo.id). $Response"
-        } catch {
-            Write-Error "An error occurred while Trigger Remediation for device ID: $($DeviceInfo.id). Error: $_"
-        }
-    }
+    # Remediation on Demand each device
+    $batchingParams = @{
+        "Objects2Process"       = $CollectionDevicesInfo.id
+        "ActionURI"             = "deviceManagement/managedDevices/{0}/initiateOnDemandProactiveRemediation/"
+        "Method"                = "POST"
+        "GraphVersion"          = "v1.0"
+        "BodySingle"            = $RemediationBody
+        "ActionTitle"           = "Remediation on Demand"
+    } 
+    Invoke-IBMGrapAPIBatching @batchingParams
 
 }
-

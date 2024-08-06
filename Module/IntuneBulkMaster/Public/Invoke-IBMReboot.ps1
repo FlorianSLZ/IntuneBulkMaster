@@ -11,11 +11,15 @@ function Invoke-IBMReboot {
 
     .NOTES
         Author: Florian Salzmann | @FlorianSLZ | https://scloud.work
-        Version: 1.0
-        Date: 2024-08-01
+        Version: 1.1
+        Date: 2024-08-06
 
         Changelog:
         - 2024-08-01: 1.0 Initial version
+        - 2024-08-06: 1.1 
+            - Added batching / batch requests for large device collections and speed improvements (seperate function: Invoke-IBMGrapAPIBatching)
+            - Aligment of all Action functions to the same structure
+
         
     #>
 
@@ -30,7 +34,7 @@ function Invoke-IBMReboot {
         [string]$DeviceName,
         
         [parameter(Mandatory = $false, HelpMessage = "Specify the operating system of the devices to reboot. For example, 'Windows' or 'iOS'.")]
-        [string]$OS,
+        [string[]]$OS,
         
         [parameter(Mandatory = $false, HelpMessage = "Reboot all devices managed by Intune.")]
         [switch]$AllDevices,
@@ -42,36 +46,41 @@ function Invoke-IBMReboot {
         [switch]$SelectGroup
     )
 
+    # Definition of supported OS for this remote action
+    $SupportetOS = @("Windows", "macOS", "iOS", "iPadOS", "Android", "Linux (Ubuntu)")
+
+    if($OS -and $SupportetOS -notcontains $OS){
+        Write-Warning "The specified operating system ""$OS"" is not supported for this action. Supported OS ""$SupportetOS""."
+        return
+    }elseif ($OS) {
+        $SupportetOS = @($OS)
+    }
+        
     # Get device IDs based on provided criteria
     if($AllDevices){
-        $deviceIds = Get-IBMIntuneDeviceInfos -AllDevices 
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -AllDeviceInfo -OS $SupportetOS
     }elseif($SelectDevices){
-        $deviceIds = Get-IBMIntuneDeviceInfos -SelectDevices
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectDevices -AllDeviceInfo -OS $SupportetOS
     }elseif($SelectGroup){
-        $deviceIds = Get-IBMIntuneDeviceInfos -SelectGroup
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectGroup -AllDeviceInfo -OS $SupportetOS
     }else{
-        $deviceIds = Get-IBMIntuneDeviceInfos -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $OS 
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $SupportetOS -AllDeviceInfo
     }
 
-    if (-not $deviceIds) {
-        Write-Output "No devices found based on the provided criteria."
+    if (-not $CollectionDevicesInfo) {
+        Write-Warning "No devices found based on the provided criteria."
         return
     }
 
     # Reboot each device
-    $counter = 0
-    foreach ($deviceId in $deviceIds) {
-        $counter++
-        Write-Progress -Id 0 -Activity "Trigger Reboot for devices" -Status "Processing $($counter) of $($deviceIds.count)" -CurrentOperation $computer -PercentComplete (($counter/$deviceIds.Count) * 100)
+    $batchingParams = @{
+        "Objects2Process"       = $CollectionDevicesInfo.id
+        "ActionURI"             = "deviceManagement/managedDevices/{0}/rebootNow/"
+        "Method"                = "POST"
+        "GraphVersion"          = "v1.0"
+        "BodySingle"            = @{}
+        "ActionTitle"           = "Reboot"
+    } 
+    Invoke-IBMGrapAPIBatching @batchingParams
 
-        $uri = "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices/$deviceId/rebootNow"
-        
-        try {
-            $response = Invoke-MgGraphRequest -Method POST -Uri $uri
-            Write-Verbose "Reboot triggered for device ID: $deviceId. $Response"
-        } catch {
-            Write-Output "An error occurred while triggering a reboot for device ID: $deviceId. Error: $_"
-        }
-    }
 }
-

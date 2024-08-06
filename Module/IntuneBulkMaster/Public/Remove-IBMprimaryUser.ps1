@@ -11,11 +11,14 @@ function Remove-IBMprimaryUser {
 
     .NOTES
         Author: Florian Salzmann | @FlorianSLZ | https://scloud.work
-        Version: 1.0
-        Date: 2024-08-03
+        Version: 1.1
+        Date: 2024-08-06
 
         Changelog:
         - 2024-08-03: 1.0 Initial version
+        - 2024-08-06: 1.1 
+            - Added batching / batch requests for large device collections and speed improvements (seperate function: Invoke-IBMGrapAPIBatching)
+            - Aligment of all Action functions to the same structure
         
     #>
 
@@ -30,7 +33,7 @@ function Remove-IBMprimaryUser {
         [string]$DeviceName,
         
         [parameter(Mandatory = $false, HelpMessage = "Specify the operating system of the devices to remove the primary user. For example, 'Windows' or 'iOS'.")]
-        [string]$OS,
+        [string[]]$OS,
         
         [parameter(Mandatory = $false, HelpMessage = "Remove the primary user from all devices managed by Intune.")]
         [switch]$AllDevices,
@@ -42,37 +45,41 @@ function Remove-IBMprimaryUser {
         [switch]$SelectGroup
     )
 
+    # Definition of supported OS for this remote action
+    $SupportetOS = @("Windows", "macOS", "iOS", "iPadOS", "Android", "Linux (Ubuntu)")
 
+    if($OS -and $SupportetOS -notcontains $OS){
+        Write-Warning "The specified operating system ""$OS"" is not supported for this action. Supported OS ""$SupportetOS""."
+        return
+    }elseif ($OS) {
+        $SupportetOS = @($OS)
+    }
+        
     # Get device IDs based on provided criteria
     if($AllDevices){
-        $deviceIds = Get-IBMIntuneDeviceInfos -AllDevices 
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -AllDeviceInfo -OS $SupportetOS
     }elseif($SelectDevices){
-        $deviceIds = Get-IBMIntuneDeviceInfos -SelectDevices
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectDevices -AllDeviceInfo -OS $SupportetOS
     }elseif($SelectGroup){
-        $deviceIds = Get-IBMIntuneDeviceInfos -SelectGroup
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectGroup -AllDeviceInfo -OS $SupportetOS
     }else{
-        $deviceIds = Get-IBMIntuneDeviceInfos -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $OS 
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $SupportetOS -AllDeviceInfo
     }
 
-    if (-not $deviceIds) {
+    if (-not $CollectionDevicesInfo) {
         Write-Warning "No devices found based on the provided criteria."
         return
     }
 
-    # Remove primary user from each device
-    $counter = 0
-    foreach ($deviceId in $deviceIds) {
-        $counter++
-        Write-Progress -Id 0 -Activity "Removing primary user from devices" -Status "Processing $($counter) of $($deviceIds.count)" -CurrentOperation $deviceId -PercentComplete (($counter/$deviceIds.Count) * 100)
+    # Remove Primary User for each device
+    $batchingParams = @{
+        "Objects2Process"       = $CollectionDevicesInfo.Id
+        "ActionURI"             = "deviceManagement/managedDevices('{0}')/users/`$ref"
+		"Method"                = "DELETE"
+        "GraphVersion"          = "beta"
+		"BodySingle"            = @{}
+        "ActionTitle"           = "Remove Primary User"
+    } 
+    Invoke-IBMGrapAPIBatching @batchingParams
 
-        $uri = "https://graph.microsoft.com/beta/deviceManagement/managedDevices('$deviceId')/users/`$ref"
-
-        try {
-            $response = Invoke-MgGraphRequest -Method DELETE -Uri $uri
-            Write-Verbose "Primary user removed from device ID: $deviceId. $response"
-        } catch {
-            Write-Output "An error occurred while removing primary user from device ID: $deviceId. Error: $_"
-        }
-    }
 }
-

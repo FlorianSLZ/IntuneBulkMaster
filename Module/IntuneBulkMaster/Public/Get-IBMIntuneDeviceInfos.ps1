@@ -10,8 +10,8 @@ function Get-IBMIntuneDeviceInfos {
 
     .NOTES
         Author: Florian Salzmann | @FlorianSLZ | https://scloud.work
-        Version: 1.1
-        Date: 2024-08-03
+        Version: 1.2
+        Date: 2024-08-06
 
         Changelog:
         - 2024-08-01: 1.0 Initial version
@@ -19,6 +19,7 @@ function Get-IBMIntuneDeviceInfos {
             - Renamed to Get-IBMIntuneDeviceInfos
             - Added support for nested group memberships
             - Added support for Intune device IDs or all Info output
+        - 2024-08-06: 1.2 Added support for passing multiple OS types
         
     #>
 
@@ -32,9 +33,9 @@ function Get-IBMIntuneDeviceInfos {
         [parameter(Mandatory = $false, HelpMessage = "Specify the name of the individual device to retrieve.")]
         [string]$DeviceName,
         
-        [parameter(Mandatory = $false, HelpMessage = "Specify the operating system of the devices to retrieve. For example, 'Windows' or 'iOS'.")]
-        [ValidateSet("Windows","macOS","iOS","Android","iPadOS", "Linux (Ubuntu)", "")]
-        [string]$OS,
+        [parameter(Mandatory = $false, HelpMessage = "Specify the operating system(s) of the devices to retrieve. For example, 'Windows' and/or 'iOS'.")]
+        [ValidateSet("Windows","macOS","iOS","iPadOS","Android","Linux (Ubuntu)","")]
+        [string[]]$OS,
         
         [parameter(Mandatory = $false, HelpMessage = "Retrieve all devices managed by Intune.")]
         [switch]$AllDevices,
@@ -112,7 +113,10 @@ function Get-IBMIntuneDeviceInfos {
     } elseif ($DeviceName) {
         $filter = "deviceName eq '$DeviceName'"
     } elseif ($OS) {
-        $filter = "operatingSystem eq '$OS'"
+        #$filter = "operatingSystem eq '$OS'"
+        $osFilters = $OS | ForEach-Object { "operatingSystem eq '$_'" }
+        $filter = "(" + ($osFilters -join " or ") + ")"
+
     } else {
         $filter = $null
     }

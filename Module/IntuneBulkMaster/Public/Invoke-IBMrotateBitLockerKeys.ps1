@@ -11,12 +11,15 @@ function Invoke-IBMrotateBitLockerKeys {
 
     .NOTES
         Author: Florian Salzmann | @FlorianSLZ | https://scloud.work
-        Version: 1.1
-        Date: 2024-08-03
+        Version: 1.2
+        Date: 2024-08-06
 
         Changelog:
         - 2024-08-01: 1.0 Initial version
         - 2024-08-03: 1.1 Added filtering for only Windows Devices
+        - 2024-08-06: 1.2
+            - Added batching / batch requests for large device collections and speed improvements (seperate function: Invoke-IBMGrapAPIBatching)
+            - Aligment of all Action functions to the same structure
         
     #>
     
@@ -31,7 +34,7 @@ function Invoke-IBMrotateBitLockerKeys {
         [string]$DeviceName,
         
         [parameter(Mandatory = $false, HelpMessage = "Specify the operating system of the devices to rotate the BitLocker key. For example, 'Windows'.")]
-        [string]$OS,
+        [string[]]$OS,
         
         [parameter(Mandatory = $false, HelpMessage = "Rotate the BitLocker key for all Windows devices managed by Intune.")]
         [switch]$AllDevices,
@@ -46,15 +49,22 @@ function Invoke-IBMrotateBitLockerKeys {
     # Definition of supported OS for this remote action
     $SupportetOS = @("Windows")
 
+    if($OS -and $SupportetOS -notcontains $OS){
+        Write-Warning "The specified operating system ""$OS"" is not supported for this action. Supported OS ""$SupportetOS""."
+        return
+    }elseif ($OS) {
+        $SupportetOS = @($OS)
+    }
+        
     # Get device IDs based on provided criteria
     if($AllDevices){
-        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -OS "Windows" -AllDeviceInfo # cause its only supported for them ;) 
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -AllDeviceInfo -OS $SupportetOS
     }elseif($SelectDevices){
-        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectDevices -AllDeviceInfo
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectDevices -AllDeviceInfo -OS $SupportetOS
     }elseif($SelectGroup){
-        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectGroup -AllDeviceInfo
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectGroup -AllDeviceInfo -OS $SupportetOS
     }else{
-        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $OS -AllDeviceInfo
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $SupportetOS -AllDeviceInfo
     }
 
     if (-not $CollectionDevicesInfo) {
@@ -62,24 +72,15 @@ function Invoke-IBMrotateBitLockerKeys {
         return
     }
 
-    # rotate BitLocker Key for each device
-    $counter = 0
-    foreach ($DeviceInfo in $CollectionDevicesInfo) {
-        $counter++
-        Write-Progress -Id 0 -Activity "Rotate BitLocker Key" -Status "Processing $($counter) of $($CollectionDevicesInfo.count)" -CurrentOperation $computer -PercentComplete (($counter/$CollectionDevicesInfo.Count) * 100)
+    # Rotate BitLocker Key each device
+    $batchingParams = @{
+        "Objects2Process"       = $CollectionDevicesInfo.id
+        "ActionURI"             = "deviceManagement/managedDevices/{0}/rotateBitLockerKeys/"
+        "Method"                = "POST"
+        "GraphVersion"          = "beta"
+		"BodySingle"            = @{}
+        "ActionTitle"           = "Rotate BitLocker Key"
+    } 
+    Invoke-IBMGrapAPIBatching @batchingParams
 
-        if($DeviceInfo.operatingSystem -notin $SupportetOS){
-            Write-Warning "BitLocker Key rotation is only supported for ""$SupportetOS"" devices. Skipping device ID: $($DeviceInfo.id)"
-            continue
-        }
-        $uri = "https://graph.microsoft.com/beta/deviceManagement/managedDevices/$($DeviceInfo.id)/rotateBitLockerKeys"
-        
-        try {
-            $response = Invoke-MgGraphRequest -Method POST -Uri $uri
-            Write-Verbose "BitLocker Key rotation triggered for device ID: $($DeviceInfo.id). $Response"
-        } catch {
-            Write-Error "An error occurred while rotating BitLocker Key for device ID: $($DeviceInfo.id). Error: $_"
-        }
-    }
 }
-

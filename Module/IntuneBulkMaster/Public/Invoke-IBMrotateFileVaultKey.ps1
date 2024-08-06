@@ -11,12 +11,15 @@ function Invoke-IBMrotateFileVaultKey {
 
     .NOTES
         Author: Florian Salzmann | @FlorianSLZ | https://scloud.work
-        Version: 1.1
-        Date: 2024-08-03
+        Version: 1.2
+        Date: 2024-08-06
 
         Changelog:
         - 2024-08-01: 1.0 Initial version
         - 2024-08-03: 1.1 Added filtering for only macOS Devices
+        - 2024-08-06: 1.2
+            - Added batching / batch requests for large device collections and speed improvements (seperate function: Invoke-IBMGrapAPIBatching)
+            - Aligment of all Action functions to the same structure
         
     #>
     
@@ -31,7 +34,7 @@ function Invoke-IBMrotateFileVaultKey {
         [string]$DeviceName,
         
         [parameter(Mandatory = $false, HelpMessage = "Specify the operating system of the devices to rotate the FileVault key. For example, 'macOS'.")]
-        [string]$OS,
+        [string[]]$OS,
         
         [parameter(Mandatory = $false, HelpMessage = "Rotate the FileVault key for all macOS devices managed by Intune.")]
         [switch]$AllDevices,
@@ -46,15 +49,22 @@ function Invoke-IBMrotateFileVaultKey {
     # Definition of supported OS for this remote action
     $SupportetOS = @("macOS")
 
+    if($OS -and $SupportetOS -notcontains $OS){
+        Write-Warning "The specified operating system ""$OS"" is not supported for this action. Supported OS ""$SupportetOS""."
+        return
+    }elseif ($OS) {
+        $SupportetOS = @($OS)
+    }
+        
     # Get device IDs based on provided criteria
     if($AllDevices){
-        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -OS "macOS" -AllDeviceInfo # cause its only supported for them ;)  
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -AllDeviceInfo -OS $SupportetOS
     }elseif($SelectDevices){
-        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectDevices -AllDeviceInfo
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectDevices -AllDeviceInfo -OS $SupportetOS
     }elseif($SelectGroup){
-        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectGroup -AllDeviceInfo
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectGroup -AllDeviceInfo -OS $SupportetOS
     }else{
-        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $OS -AllDeviceInfo
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $SupportetOS -AllDeviceInfo
     }
 
     if (-not $CollectionDevicesInfo) {
@@ -62,24 +72,15 @@ function Invoke-IBMrotateFileVaultKey {
         return
     }
 
-    # rotate FileVault Key for each device
-    $counter = 0
-    foreach ($DeviceInfo in $CollectionDevicesInfo) {
-        $counter++
-        Write-Progress -Id 0 -Activity "Rotate FileVault Key" -Status "Processing $($counter) of $($CollectionDevicesInfo.count)" -CurrentOperation $computer -PercentComplete (($counter/$CollectionDevicesInfo.Count) * 100)
+    # Rotate FileVault Key each device
+    $batchingParams = @{
+        "Objects2Process"       = $CollectionDevicesInfo.id
+        "ActionURI"             = "deviceManagement/managedDevices/{0}/rotateFileVaultKey/"
+        "Method"                = "POST"
+        "GraphVersion"          = "beta"
+		"BodySingle"            = @{}
+        "ActionTitle"           = "Rotate FileVault Key"
+    } 
+    Invoke-IBMGrapAPIBatching @batchingParams
 
-        if($DeviceInfo.operatingSystem -notin $SupportetOS){
-            Write-Warning "FileVault Key rotation is only supported for ""$SupportetOS"" devices. Skipping device ID: $($DeviceInfo.id)"
-            continue
-        }
-        $uri = "https://graph.microsoft.com/beta/deviceManagement/managedDevices/$($DeviceInfo.id)/rotateFileVaultKey"
-        
-        try {
-            $response = Invoke-MgGraphRequest -Method POST -Uri $uri
-            Write-Verbose "FileVault Key rotation triggered for device ID: $($DeviceInfo.id). $Response"
-        } catch {
-            Write-Error "An error occurred while rotating FileVault Key for device ID: $($DeviceInfo.id). Error: $_"
-        }
-    }
 }
-

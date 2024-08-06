@@ -11,11 +11,14 @@ function Remove-IBMAutopilotDevice {
 
     .NOTES
         Author: Florian Salzmann | @FlorianSLZ | https://scloud.work
-        Version: 1.0
-        Date: 2024-08-03
+        Version: 1.1
+        Date: 2024-08-06
 
         Changelog:
         - 2024-08-03: 1.0 Initial version
+        - 2024-08-06: 1.1 
+            - Added batching / batch requests for large device collections and speed improvements (seperate function: Invoke-IBMGrapAPIBatching)
+            - Aligment of all Action functions to the same structure
 
         
     #>
@@ -31,7 +34,7 @@ function Remove-IBMAutopilotDevice {
         [string]$DeviceName,
         
         [parameter(Mandatory = $false, HelpMessage = "Specify the operating system of the devices to remove from Autopilot. For example, 'Windows' or 'iOS'.")]
-        [string]$OS,
+        [string[]]$OS,
 
         [parameter(Mandatory = $false, HelpMessage = "Remove devices from Autopilot based on all Intune devices.")]
         [switch]$AllDevices,
@@ -44,36 +47,67 @@ function Remove-IBMAutopilotDevice {
     )
 
 
-    # Function to get Autopilot device ID based on Intune Device ID
-    function Get-AutopilotDeviceIdByIntuneId {
+    function Get-AutoPilotDevicesBySerialNumbers {
+
         param (
-            [string]$SerialNumber
+            [string[]]$SerialNumbers,
+            [int]$BatchSize = 20
         )
 
-        $uri = "https://graph.microsoft.com/beta/deviceManagement/windowsAutopilotDeviceIdentities?`$filter=contains(serialNumber,'$SerialNumber')"
+        $AutopilotDeviceCollection = [System.Collections.Generic.List[System.Object]]::new()
 
-        $autopilotDevices = Invoke-IBMPagingRequest -Uri $uri
+        for ($i = 0; $i -lt $SerialNumbers.Length; $i += $BatchSize) {
 
-        if ($autopilotDevices.Count -eq 0) {
-            Write-Warning "No Autopilot device found for Intune Device ID: $IntuneDeviceId."
-            return $null
+            Write-Verbose "Processing batch $([math]::Ceiling(($i + 1) / $BatchSize)) of $([math]::Ceiling($SerialNumbers.Length / $BatchSize))"
+
+            # split data to chunks of batchSize
+            $end = $i + $BatchSize - 1
+            if ($end -ge $SerialNumbers.Length) { $end = $SerialNumbers.Length }
+            $index = $i
+            $requests = $SerialNumbers[$i..($end)] | ForEach-Object {
+                [PSCustomObject]@{
+                    'Id'     = ++$index
+                    'Method' = 'GET'
+                    'Url'    = "deviceManagement/windowsAutopilotDeviceIdentities?`$filter=contains(serialNumber,'{0}')" -f $PSItem
+                }
+            }
+        
+            $requestParams = @{
+                'Method'      = 'Post'
+                'Uri'         = 'https://graph.microsoft.com/v1.0/$batch'
+                'ContentType' = 'application/json'
+                'Body'        = @{
+                    'requests' = @($requests)
+                } | ConvertTo-Json
+            }
+            $response = Invoke-MgGraphRequest @requestParams
+            # Invoke-MgGraphRequest deserializes request to a hashtable
+            $response.responses | ForEach-Object { $AutopilotDeviceCollection.Add([pscustomobject]$PSItem.body) }
         }
 
-        return $autopilotDevices[0].id
+        return $AutopilotDeviceCollection
+
     }
 
     # Definition of supported OS for this remote action
     $SupportetOS = @("Windows")
-    
+
+    if($OS -and $SupportetOS -notcontains $OS){
+        Write-Warning "The specified operating system ""$OS"" is not supported for this action. Supported OS ""$SupportetOS""."
+        return
+    }elseif ($OS) {
+        $SupportetOS = @($OS)
+    }
+        
     # Get device IDs based on provided criteria
     if($AllDevices){
-        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -OS "Windows" -AllDeviceInfo # cause its only supported for them ;) 
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -AllDeviceInfo -OS $SupportetOS
     }elseif($SelectDevices){
-        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectDevices -AllDeviceInfo
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectDevices -AllDeviceInfo -OS $SupportetOS
     }elseif($SelectGroup){
-        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectGroup -AllDeviceInfo
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectGroup -AllDeviceInfo -OS $SupportetOS
     }else{
-        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $OS -AllDeviceInfo
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $SupportetOS -AllDeviceInfo
     }
 
     if (-not $CollectionDevicesInfo) {
@@ -81,35 +115,18 @@ function Remove-IBMAutopilotDevice {
         return
     }
 
-    # Autopilot Object removal for each device
-    $counter = 0
-    foreach ($DeviceInfo in $CollectionDevicesInfo) {
-        $counter++
-        Write-Progress -Id 0 -Activity "Autopilot Object removal" -Status "Processing $($counter) of $($CollectionDevicesInfo.count)" -CurrentOperation $computer -PercentComplete (($counter/$CollectionDevicesInfo.Count) * 100)
+    # Get all Autopilot devices by serial numbers
+    $autopilotDevices = (Get-AutoPilotDevicesBySerialNumbers -SerialNumbers $CollectionDevicesInfo.serialNumber).value.id
+    
+    # Autopilot Object removal each device
+    $batchingParams = @{
+        "Objects2Process"       = $autopilotDevices
+        "ActionURI"             = "deviceManagement/windowsAutopilotDeviceIdentities/{0}/"
+        "Method"                = "DELETE"
+        "GraphVersion"          = "v1.0"
+		"BodySingle"            = @{}
+        "ActionTitle"           = "Autopilot Object removal"
+    } 
+    Invoke-IBMGrapAPIBatching @batchingParams
 
-        if($DeviceInfo.operatingSystem -notin $SupportetOS){
-            Write-Warning "Autopilot Object removal is only supported for ""$SupportetOS"" devices. Skipping device ID: $($DeviceInfo.id)"
-            continue
-        }
-
-        if($DeviceInfo.serialNumber.Length -lt 4){
-            Write-Warning "No serial number found for device ID: $($DeviceInfo.id). Skipping device."
-            continue
-        }
-
-        $autopilotDeviceId = Get-AutopilotDeviceIdByIntuneId -SerialNumber $DeviceInfo.serialNumber
-
-        if ($autopilotDeviceId) {
-            $uri = "https://graph.microsoft.com/v1.0/deviceManagement/windowsAutopilotDeviceIdentities/$autopilotDeviceId"
-
-            try {
-                $response = Invoke-MgGraphRequest -Method DELETE -Uri $uri
-                Write-Verbose "Autopilot device with ID: $autopilotDeviceId removed successfully. $response"
-            } catch {
-                Write-Output "An error occurred while removing Autopilot device ID: $autopilotDeviceId. Error: $_"
-            }
-        }else{
-            Write-Warning "No Autopilot device found for Serialnumber: $($DeviceInfo.serialNumber)."
-        }
-    }
 }

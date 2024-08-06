@@ -12,11 +12,14 @@ function Set-IBMIntuneDeviceName {
 
     .NOTES
         Author: Florian Salzmann | @FlorianSLZ | https://scloud.work
-        Version: 1.0
-        Date: 2024-08-03
+        Version: 1.1
+        Date: 2024-08-06
 
         Changelog:
         - 2024-08-03: 1.0 Initial version
+        - 2024-08-06: 1.1 
+            - Added batching / batch requests for large device collections and speed improvements (seperate function: Invoke-IBMGrapAPIBatching)
+            - Aligment of all Action functions to the same structure
         
     #>
 
@@ -31,7 +34,7 @@ function Set-IBMIntuneDeviceName {
         [string]$DeviceName,
 
         [parameter(Mandatory = $false, HelpMessage = "Specify the operating system of the devices to rotate the name for. For example, 'Windows' or 'iOS'.")]
-        [string]$OS,
+        [string[]]$OS,
 
         [parameter(Mandatory = $false, HelpMessage = "Rotate the name for all devices managed by Intune.")]
         [switch]$AllDevices,
@@ -56,20 +59,15 @@ function Set-IBMIntuneDeviceName {
         [switch]$ConfirmCutOff
     )
 
-    # Get device IDs based on provided criteria
-    if($AllDevices){
-        $deviceIds = Get-IBMIntuneDeviceInfos -AllDevices 
-    }elseif($SelectDevices){
-        $deviceIds = Get-IBMIntuneDeviceInfos -SelectDevices
-    }elseif($SelectGroup){
-        $deviceIds = Get-IBMIntuneDeviceInfos -SelectGroup
-    }else{
-        $deviceIds = Get-IBMIntuneDeviceInfos -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $OS 
-    }
 
-    if (-not $deviceIds) {
-        Write-Warning "No devices found based on the provided criteria."
+    # Definition of supported OS for this remote action
+    $SupportetOS = @("Windows", "macOS", "iOS", "iPadOS", "Android", "Linux (Ubuntu)")
+
+    if($OS -and $SupportetOS -notcontains $OS){
+        Write-Warning "The specified operating system ""$OS"" is not supported for this action. Supported OS ""$SupportetOS""."
         return
+    }elseif ($OS) {
+        $SupportetOS = @($OS)
     }
 
     if ($SuffixType -eq "UniqueNumber") {
@@ -77,30 +75,37 @@ function Set-IBMIntuneDeviceName {
         Write-Verbose "Existing devices: $($existingDevices.deviceName)"
 
     }
+        
+    # Get device IDs based on provided criteria
+    if($AllDevices){
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -AllDeviceInfo -OS $SupportetOS
+    }elseif($SelectDevices){
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectDevices -AllDeviceInfo -OS $SupportetOS
+    }elseif($SelectGroup){
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectGroup -AllDeviceInfo -OS $SupportetOS
+    }else{
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $SupportetOS -AllDeviceInfo
+    }
 
-    # Set Intune Device Name for each device
-    $counter = 0
-    foreach ($deviceId in $deviceIds) {
-        $counter++
-        Write-Progress -Id 0 -Activity "Set Intune Device Name" -Status "Processing $($counter) of $($deviceIds.count)" -CurrentOperation $computer -PercentComplete (($counter/$deviceIds.Count) * 100)
+    if (-not $CollectionDevicesInfo) {
+        Write-Warning "No devices found based on the provided criteria."
+        return
+    }
 
+
+    # Create new Intune Device Name for each device
+    foreach ($IntuneDevice in $CollectionDevicesInfo) {
+
+        
         # Get the device details to retrieve the serial number if needed
         if ($SuffixType -eq "SerialNumber") {
-            $device = Invoke-MgGraphRequest -Method GET -Uri "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices/$DeviceId"
 
-            if ($null -eq $device) {
-                Write-Error "Device not found with ID $DeviceId"
-                return
-            }
-
-            $serialNumber = $device.serialNumber
-
-            if ($null -eq $serialNumber) {
-                Write-Error "Serial number not found for device ID $DeviceId"
+            if ($null -eq $($IntuneDevice.serialNumber)) {
+                Write-Error "Serial number not found for device ID $($IntuneDevice.Id)"
                 return
             }
             
-            $newDeviceName = "$Prefix$serialNumber"
+            $newDeviceName = "$Prefix$($IntuneDevice.serialNumber)"
 
         } elseif ($SuffixType -eq "UniqueNumber") {
             do {
@@ -119,33 +124,32 @@ function Set-IBMIntuneDeviceName {
             if ($confirm -eq "Y") {
                 $newDeviceName = $newDeviceName.Substring(0,15)
             }else{
-                Write-Warning "Device name not set for device ID $DeviceId"
+                Write-Warning "Device name not set for device ID $($IntuneDevice.Id)"
                 return
             }
         }elseif ($newDeviceName.Length -gt 15) {    
             $newDeviceName = $newDeviceName.Substring(0,15)
         }
 
-        # Prepare the request body
-        $body = @{
-            deviceName = $newDeviceName
-        }
+        $IntuneDevice | Add-Member -MemberType NoteProperty -Name "NewDeviceName" -Value $newDeviceName -Force
+        Write-Verbose "Devicename for $($IntuneDevice.deviceName) will be set to $newDeviceName"
 
-        # Convert the body to JSON
-        $jsonBody = $body | ConvertTo-Json
-
-        try{
-            # Update the device name
-        Write-Verbose "Setting device name to $newDeviceName for device ID $DeviceId"
-        Invoke-MgGraphRequest -Method POST -Uri "https://graph.microsoft.com/beta/deviceManagement/managedDevices/$DeviceId/setDeviceName" -Body $jsonBody -ContentType "application/json"
-        
-        Write-Output "Device name set to $newDeviceName for device ID $DeviceId"
-
-        }catch{
-            Write-Error "An error occurred while setting device name for device ID $DeviceId. Error: $_"
-            return
-        }
-        
     }
-}
 
+    # Prepare the request body
+    $UpdateBody = @{
+        deviceName = $newDeviceName
+    }
+
+    # Set Intune Device Name for each device
+    $batchingParams = @{
+        "Objects2Process"       = $CollectionDevicesInfo.Id
+        "ActionURI"             = "deviceManagement/managedDevices/{0}/setDeviceName/"
+		"Method"                = "POST"
+        "GraphVersion"          = "beta"
+		"BodySingle"            = $UpdateBody
+        "ActionTitle"           = "Set Intune Device Name"
+    } 
+    Invoke-IBMGrapAPIBatching @batchingParams
+
+}

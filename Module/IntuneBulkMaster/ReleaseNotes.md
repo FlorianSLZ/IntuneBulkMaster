@@ -1,5 +1,17 @@
 # Release notes for the IntuneBulkMaster Module
 
+## 24.08.06.00
+Added functions:
+- Invoke-IBMGrapAPIBatching
+
+Improved functions: 
+- Get-IBMIntuneDeviceInfos
+  - Added support for passing multiple OS types
+  
+- In all action functions:
+  - Added batching / batch requests for large device collections and speed improvements (seperate function: Invoke-IBMGrapAPIBatching)
+  - Aligment of all Action functions to the same structure
+
 ## 24.08.04.00
 Added functions:
 - Remove-AutopilotDeviceByIntuneID
