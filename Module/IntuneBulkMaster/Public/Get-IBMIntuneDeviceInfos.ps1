@@ -10,8 +10,8 @@ function Get-IBMIntuneDeviceInfos {
 
     .NOTES
         Author: Florian Salzmann | @FlorianSLZ | https://scloud.work
-        Version: 1.2
-        Date: 2024-08-06
+        Version: 1.3
+        Date: 2024-08-07
 
         Changelog:
         - 2024-08-01: 1.0 Initial version
