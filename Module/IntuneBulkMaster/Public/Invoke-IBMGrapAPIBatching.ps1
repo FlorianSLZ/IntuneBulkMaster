@@ -113,8 +113,8 @@ function Invoke-IBMGrapAPIBatching {
         }
     }
 
-    Write-Host "$ActionTitle of $($Objects2Process.count) devices completed." -ForegroundColor Green
+    Write-Verbose "$ActionTitle of $($Objects2Process.count) devices completed."
 
-    return $ResponseCollection
+    return $ResponseCollection.value
     
 }
