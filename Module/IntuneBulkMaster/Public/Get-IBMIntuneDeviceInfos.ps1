@@ -10,8 +10,8 @@ function Get-IBMIntuneDeviceInfos {
 
     .NOTES
         Author: Florian Salzmann | @FlorianSLZ | https://scloud.work
-        Version: 1.3
-        Date: 2024-08-07
+        Version: 1.4
+        Date: 2024-08-12
 
         Changelog:
         - 2024-08-01: 1.0 Initial version
@@ -21,6 +21,7 @@ function Get-IBMIntuneDeviceInfos {
             - Added support for Intune device IDs or all Info output
         - 2024-08-06: 1.2 Added support for passing multiple OS types
         - 2024-08-07: 1.3 Added support for retrieving devices by serial number(s)
+        - 2024-08-12: 1.4 Improved getting devices from group by name / nested groups
         
     #>
 
@@ -70,17 +71,15 @@ function Get-IBMIntuneDeviceInfos {
 
         $EntraDeviceIds = @()
 
-        foreach ($member in $members) {
-            if ($member.'@odata.type' -eq '#microsoft.graph.device') {
-                # If the member is a device, get its deviceId
-                $EntraDeviceIds += $member.deviceId
-            } elseif ($member.'@odata.type' -eq '#microsoft.graph.group') {
-                # If the member is a group, recursively get device IDs from this group
-                $nestedGroupEntraDeviceIds = Get-GroupMemberTypeDevice -groupId $member.id
-                $EntraDeviceIds += $nestedGroupEntraDeviceIds
-            }
+        $EntraDeviceIds = ($members | Where-Object { $_.'@odata.type' -eq '#microsoft.graph.device' }).deviceId
+        $EntraGroupIds = ($members | Where-Object { $_.'@odata.type' -eq '#microsoft.graph.group' }).id
+
+        foreach ($group in $EntraGroupIds) {
+            $nestedGroupEntraDeviceIds = Get-GroupMemberTypeDevice -groupId $group
+            $EntraDeviceIds += $nestedGroupEntraDeviceIds
         }
 
+        $EntraDeviceIds = $EntraDeviceIds -gt 0 | Sort-Object -Unique
         return $EntraDeviceIds
     }
 
@@ -103,12 +102,16 @@ function Get-IBMIntuneDeviceInfos {
 
             # Map Entra device IDs to Intune managed device IDs
             $IntuneDeviceInfos = @()
-            foreach ($EntraDeviceId in $EntraDeviceIds) {
-                $managedDevice = Invoke-IBMPagingRequest -Uri "https://graph.microsoft.com/v1.0/deviceManagement/managedDevices?`$filter=azureADDeviceId eq '$EntraDeviceId'" 
-                if ($managedDevice) {
-                    $IntuneDeviceInfos += $managedDevice[0]
-                }
-            }
+            $batchingParams = @{
+                "Objects2Process"       = $EntraDeviceIds
+                "ActionURI"             = "deviceManagement/managedDevices?`$filter=azureADDeviceId eq '{0}'"
+                "Method"                = "GET"
+                "GraphVersion"          = "v1.0"
+                "BodySingle"            = @{}
+                "ActionTitle"           = "Get Device by azureADDeviceId"
+            } 
+            $IntuneDeviceInfos = Invoke-IBMGrapAPIBatching @batchingParams
+
         } else {
             Write-Output "Group ""$GroupName"" not found."
             break
