@@ -10,11 +10,13 @@ function Set-IBMGroupTag {
 
     .NOTES
         Author: Florian Salzmann | @FlorianSLZ | https://scloud.work
-        Version: 1.0
-        Date: 2024-08-11
+        Version: 1.1
+        Date: 2024-08-12
 
         Changelog:
         - 2024-08-11: 1.0 Initial version
+        - 2024-08-12: 1.1
+            - Optimized handling of unsupported OS
         
     #>
 
@@ -48,20 +50,29 @@ function Set-IBMGroupTag {
     if($OS -and $SupportetOS -notcontains $OS){
         Write-Warning "The specified operating system ""$OS"" is not supported for this action. Supported OS ""$SupportetOS""."
         return
-    }elseif ($OS) {
-        $SupportetOS = @($OS)
     }
         
     # Get device IDs based on provided criteria
     if($AllDevices){
-        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -AllDeviceInfo -OS $SupportetOS
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -AllDeviceInfo
     }elseif($SelectDevices){
-        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectDevices -AllDeviceInfo -OS $SupportetOS
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectDevices -AllDeviceInfo 
     }elseif($SelectGroup){
-        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectGroup -AllDeviceInfo -OS $SupportetOS
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -SelectGroup -AllDeviceInfo
     }else{
-        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $SupportetOS -AllDeviceInfo
+        $CollectionDevicesInfo = Get-IBMIntuneDeviceInfos -DeviceId $DeviceId -GroupName $GroupName -DeviceName $DeviceName -OS $OS -AllDeviceInfo
     }
+
+    # collection for unsupported OS
+    $UnsupportedDevices = $CollectionDevicesInfo | Where-Object { $SupportetOS -notcontains $_.operatingSystem }
+    if($UnsupportedDevices){
+        Write-Warning "Unsuported devices for this action wont be processed: $($UnsupportedDevices.count)"
+        Write-Host "Use -Verbose to show details."
+        Write-Verbose $UnsupportedDevices.id
+    }
+    
+    # filter out supported OS
+    $CollectionDevicesInfo = $CollectionDevicesInfo | Where-Object { $SupportetOS -contains $_.operatingSystem }
 
     if (-not $CollectionDevicesInfo) {
         Write-Warning "No devices found based on the provided criteria."

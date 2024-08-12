@@ -100,7 +100,7 @@ function Get-IBMIntuneDeviceInfos {
             
             # Get all device IDs from the group, including nested groups
             $EntraDeviceIds = Get-GroupMemberTypeDevice -groupId $groupId
-            if ($EntraDeviceIds.Count -eq 0 -or "False") {
+            if ($EntraDeviceIds.Count -eq "False") {
                 Write-Output "No devices found in group ""$GroupName""."
                 break
             }

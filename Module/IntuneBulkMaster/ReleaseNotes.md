@@ -1,5 +1,10 @@
 # Release notes for the IntuneBulkMaster Module
 
+## 24.08.12.01
+- Error correction for return if -SelectDevices is used in Get-IBMAutopilotDeviceInfos
+- All function: Optimized handling of unsupported OS
+
+
 ## 24.08.12.00
 Added functions:
 - Get-IBMAutopilotDeviceInfos
