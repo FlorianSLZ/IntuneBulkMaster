@@ -1,5 +1,13 @@
 # Release notes for the IntuneBulkMaster Module
 
+## 24.08.12.00
+Added functions:
+- Get-IBMAutopilotDeviceInfos
+- Remove-IBMAutopilotDevice
+- Set-IBMGroupTag
+
+Fixed problem with Invoke-IBMGrapAPIBatching
+
 ## 24.08.06.00
 Added functions:
 - Invoke-IBMGrapAPIBatching

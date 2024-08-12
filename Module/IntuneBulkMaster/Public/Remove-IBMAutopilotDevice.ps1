@@ -12,14 +12,12 @@ function Remove-IBMAutopilotDevice {
     .NOTES
         Author: Florian Salzmann | @FlorianSLZ | https://scloud.work
         Version: 1.1
-        Date: 2024-08-06
+        Date: 2024-08-10
 
         Changelog:
-        - 2024-08-03: 1.0 Initial version
-        - 2024-08-06: 1.1 
-            - Added batching / batch requests for large device collections and speed improvements (seperate function: Invoke-IBMGrapAPIBatching)
-            - Aligment of all Action functions to the same structure
-
+        - 2024-08-07: 1.0 Initial version
+        - 2024-08-10: 1.1
+            - Added batching / batch requests for large device collections and speed improvements
         
     #>
 
