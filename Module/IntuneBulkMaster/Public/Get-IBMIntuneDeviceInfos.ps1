@@ -22,6 +22,7 @@ function Get-IBMIntuneDeviceInfos {
         - 2024-08-06: 1.2 Added support for passing multiple OS types
         - 2024-08-07: 1.3 Added support for retrieving devices by serial number(s)
         - 2024-08-12: 1.4 Improved getting devices from group by name / nested groups
+        - 2024-08-12: 1.4 Error correction for return if -SelectDevices is used
         
     #>
 
@@ -99,6 +100,10 @@ function Get-IBMIntuneDeviceInfos {
             
             # Get all device IDs from the group, including nested groups
             $EntraDeviceIds = Get-GroupMemberTypeDevice -groupId $groupId
+            if ($EntraDeviceIds.Count -eq 0 -or "False") {
+                Write-Output "No devices found in group ""$GroupName""."
+                break
+            }
 
             # Map Entra device IDs to Intune managed device IDs
             $IntuneDeviceInfos = @()
@@ -118,11 +123,6 @@ function Get-IBMIntuneDeviceInfos {
         }
     } elseif ($DeviceName) {
         $filter = "deviceName eq '$DeviceName'"
-    } elseif ($OS) {
-        #$filter = "operatingSystem eq '$OS'"
-        $osFilters = $OS | ForEach-Object { "operatingSystem eq '$_'" }
-        $filter = "(" + ($osFilters -join " or ") + ")"
-
     } elseif($Serialnumber){
         $filter = "serialNumber eq '$Serialnumber'"
     } elseif($Serialnumbers){
@@ -143,9 +143,12 @@ function Get-IBMIntuneDeviceInfos {
         $IntuneDeviceInfos = Invoke-IBMGrapAPIBatching @batchingParams
 
 
-    }else {
-        $filter = $null
-    }
+    } elseif ($OS) {
+        #$filter = "operatingSystem eq '$OS'"
+        $osFilters = $OS | ForEach-Object { "operatingSystem eq '$_'" }
+        $filter = "(" + ($osFilters -join " or ") + ")"
+
+    } 
 
     $uri = "https://graph.microsoft.com/beta/deviceManagement/managedDevices"
     if ($filter) {
@@ -157,7 +160,7 @@ function Get-IBMIntuneDeviceInfos {
         break
     }
 
-    if($IntuneDeviceInfos){
+    if(!$GroupName -and !$Serialnumbers){
         $IntuneDeviceInfos = Invoke-IBMPagingRequest -Uri $uri
     }
 
